@@ -3,7 +3,6 @@ import yaml
 import spotipy
 import uuid
 import requests
-import time
 import spotipy.util as util
 
 from random import randint
