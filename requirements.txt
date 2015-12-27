@@ -1,0 +1,3 @@
+pyyaml
+spotipy 
+requests
