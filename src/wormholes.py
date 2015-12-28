@@ -14,8 +14,7 @@ global CONFIG
 class User(object):
 
     def __init__(self, spotify_conn):
-        self.spotify = spotify_conn
-        user_info = self.spotify.current_user()
+        user_info = spotify_conn.current_user()
         self.id = user_info['id']
         self.name = user_info['display_name']
 
@@ -34,11 +33,16 @@ artists.
 Type help or ? to list commands.
     """
 
-    def __init__(self, user=None):
+    def __init__(self, spotify_conn=None):
         cmd.Cmd.__init__(self)
+        if spotify_conn:
+            self.sp = spotify_conn
+            self.user = User(self.sp)
+        else:
+            self.sp = None
+            self.user = None
         self.set_prompt()
-        self._user = user
-
+        
     def set_prompt(self, user=None):
         if user is None:
             self.prompt = 'Wormholes: '
@@ -61,8 +65,9 @@ Spotify-Wormholes.
         )
         try:
             spotify_conn = spotipy.Spotify(auth=token)
-            self._user = User(spotify_conn)
-            self.set_prompt(self._user.name)
+            self.sp = spotify_conn
+            self.user = User(self.sp)
+            self.set_prompt(self.user.name)
         except SpotifyOauthError:
             print "Botched login!"
 
@@ -74,7 +79,7 @@ artist name.
 Example: create "R Kelly"
         """
 
-        if self._user is None:
+        if self.user is None:
             print('\nNot logged in, try "help" for more info.\n')
             return
 
@@ -82,20 +87,15 @@ Example: create "R Kelly"
         worm_tracklist = []
         worm_artistlist = []
         depth = CONFIG['WORM_DEPTH']
-        rand_artist_coef = CONFIG['RANDOM_COEFFICIENTS']['ARTIST']
 
         worm_artist_id = self.get_artist_id(origin_artist)
         worm_artistlist.append(worm_artist_id)
 
         for i in xrange(depth):
-            self.select_worm_track(worm_artist_id, worm_tracklist)
-            related_artists = self.get_related_artists(worm_artist_id)
-
-            while worm_artist_id in worm_artistlist:
-                worm_artist_id = self.random_select(
-                    related_artists, rand_artist_coef)
-
-            worm_artistlist.append(worm_artist_id)
+            worm_track = self.get_worm_track(worm_artist_id)
+            worm_tracklist.append(worm_track)
+            worm_artist_id = self.get_worm_artist(
+                worm_artist_id, worm_artistlist)
 
         wormhole = self.create_wormhole_playlist(
             worm_name, worm_tracklist)
@@ -109,17 +109,17 @@ Closes Spotify-Wormholes.
         return True
 
     def create_wormhole_playlist(self, worm_name, worm_tracklist):
-        wormhole = self._user.spotify.user_playlist_create(
-            self._user.id, worm_name)
+        wormhole = self.sp.user_playlist_create(
+            self.user.id, worm_name)
         wormhole_id = wormhole['id']
 
-        self._user.spotify.user_playlist_add_tracks(
-            self._user.id, wormhole_id, worm_tracklist)
+        self.sp.user_playlist_add_tracks(
+            self.user.id, wormhole_id, worm_tracklist)
 
         return wormhole
 
     def get_artist_id(self, artist):
-        results = self._user.spotify.search(
+        results = self.sp.search(
             q='artist:' + artist, type='artist'
         )
         artist = results['artists']['items'][0]
@@ -128,7 +128,7 @@ Closes Spotify-Wormholes.
         return artist_id
 
     def get_related_artists(self, artist_id):
-        results = self._user.spotify.artist_related_artists(artist_id)
+        results = self.sp.artist_related_artists(artist_id)
         related_artists = [
             artist['id'] for artist in results['artists']
         ]
@@ -136,7 +136,7 @@ Closes Spotify-Wormholes.
         return related_artists
 
     def get_top_tracks(self, artist_id):
-        results = self._user.spotify.artist_top_tracks(
+        results = self.sp.artist_top_tracks(
             artist_id,  country='US')
         top_tracks = [
             track['id'] for track in results['tracks']
@@ -144,7 +144,7 @@ Closes Spotify-Wormholes.
 
         return top_tracks
 
-    def select_worm_track(self, worm_artist_id, worm_tracklist):
+    def get_worm_track(self, worm_artist_id):
         rand_track_coef = CONFIG['RANDOM_COEFFICIENTS']['TRACK']
 
         worm_artist_tracks = self.get_top_tracks(worm_artist_id)
@@ -152,7 +152,24 @@ Closes Spotify-Wormholes.
             worm_artist_tracks,
             rand_track_coef
         )
-        worm_tracklist.append(worm_track)
+
+        return worm_track
+
+    def get_worm_artist(self, worm_artist_id, worm_artistlist):
+        rand_artist_coef = CONFIG['RANDOM_COEFFICIENTS']['ARTIST']
+        related_artists = self.get_related_artists(worm_artist_id)
+
+        while worm_artist_id in worm_artistlist:
+            try:
+                related_artists.remove(worm_artist_id)
+            except ValueError:
+                pass
+            worm_artist_id = self.random_select(
+                related_artists, rand_artist_coef)
+
+        worm_artistlist.append(worm_artist_id)
+
+        return worm_artist_id
 
     def random_select(self, collection, coefficient):
         if len(collection) < coefficient:
