@@ -93,11 +93,15 @@ Example: create "R Kelly"
 
         for i in xrange(depth):
             worm_track = self.get_worm_track(worm_artist_id)
-            worm_tracklist.append(worm_track)
+            if worm_track:
+                worm_tracklist.append(worm_track)
             worm_artist_id = self.get_worm_artist(
                 worm_artist_id, worm_artistlist)
+            if not worm_artist_id:
+                print "Wormhole exhausted!"
+                break
 
-        wormhole = self.create_wormhole_playlist(
+        wormhole = self.create_wormhole(
             worm_name, worm_tracklist)
 
         print '\nCreated "%s"\n' % worm_name
@@ -108,13 +112,18 @@ Closes Spotify-Wormholes.
         """
         return True
 
-    def create_wormhole_playlist(self, worm_name, worm_tracklist):
+    def create_wormhole(self, worm_name, worm_tracklist):
         wormhole = self.sp.user_playlist_create(
             self.user.id, worm_name)
         wormhole_id = wormhole['id']
 
-        self.sp.user_playlist_add_tracks(
-            self.user.id, wormhole_id, worm_tracklist)
+        if len(worm_tracklist) > 100:
+            worm_tracklist = [worm_tracklist[x:x+100] for x in xrange(
+                0, len(worm_tracklist), 100)]
+
+        for track_chunk in worm_tracklist:
+            self.sp.user_playlist_add_tracks(
+                self.user.id, wormhole_id, track_chunk)
 
         return wormhole
 
@@ -136,8 +145,12 @@ Closes Spotify-Wormholes.
         return related_artists
 
     def get_top_tracks(self, artist_id):
-        results = self.sp.artist_top_tracks(
-            artist_id,  country='US')
+        for country in CONFIG['MARKETS']:
+            results = self.sp.artist_top_tracks(
+                artist_id,  country=country)
+            if results:
+                break
+
         top_tracks = [
             track['id'] for track in results['tracks']
         ]
@@ -159,6 +172,9 @@ Closes Spotify-Wormholes.
         rand_artist_coef = CONFIG['RANDOM_COEFFICIENTS']['ARTIST']
         related_artists = self.get_related_artists(worm_artist_id)
 
+        if set(related_artists) < set(worm_artistlist):
+            return None
+
         while worm_artist_id in worm_artistlist:
             try:
                 related_artists.remove(worm_artist_id)
@@ -172,6 +188,8 @@ Closes Spotify-Wormholes.
         return worm_artist_id
 
     def random_select(self, collection, coefficient):
+        if not collection:
+            return None
         if len(collection) < coefficient:
             return collection[randint(0, len(collection) - 1)]
         else:
