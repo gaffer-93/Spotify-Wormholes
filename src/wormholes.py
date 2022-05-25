@@ -76,7 +76,7 @@ Spotify-Wormholes.
 Creates a wormhole playlist given an origin
 artist name.
 
-Example: create "R Kelly"
+Example: create "Kanye West"
         """
 
         if self.user is None:
